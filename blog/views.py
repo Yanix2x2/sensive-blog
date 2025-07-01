@@ -5,13 +5,12 @@ from blog.models import Comment, Post, Tag
 
 def get_related_posts_count():
     return Tag.objects.annotate(posts_count=Count('posts')).order_by('-posts_count')
-    # return tag.posts.count()
 
 
 def get_likes_count():
     return Post.objects.annotate(
         likes_count=Count('likes')
-    ).order_by('-likes_count')
+    ).order_by('-likes_count').prefetch_related('author')
 
 
 def serialize_post(post):
@@ -40,7 +39,7 @@ def index(request):
 
     fresh_posts = Post.objects.annotate(
         fresh_posts=Count('published_at')
-    ).order_by('-published_at')
+    ).order_by('-published_at').prefetch_related('author')
     most_fresh_posts = fresh_posts[:5]
 
     most_popular_tags = get_related_posts_count()[:5]
