@@ -3,6 +3,10 @@ from django.db.models import Count
 from blog.models import Comment, Post, Tag
 
 
+def get_related_posts_count(tag):
+    return tag.posts.count()
+
+
 def serialize_post(post):
     return {
         'title': post.title,
@@ -24,17 +28,43 @@ def serialize_tag(tag):
     }
 
 
+def serialize_post_optimized(post):
+    return {
+        'title': post.title,
+        'teaser_text': post.text[:200],
+        'author': post.author.username,
+        'comments_amount': post.comments_count,
+        'image_url': post.image.url if post.image else None,
+        'published_at': post.published_at,
+        'slug': post.slug,
+        'tags': [serialize_tag(tag) for tag in post.tags.all()],
+        'first_tag_title': post.tags.all()[0].title,
+    }
+
+
 def index(request):
     most_popular_posts = (
         Post.objects
-        .annotate(likes_count=Count('likes'))
+        .annotate(
+            likes_count=Count('likes')
+        )
         .order_by('-likes_count')[:5]
         .prefetch_related('author')
     )
+    most_popular_posts_ids = [post.id for post in most_popular_posts]
+    post_with_comments = Post.objects.filter(id__in=most_popular_posts_ids).annotate(comments_count=Count('comments'))
+    ids_and_comments = post_with_comments.values_list('id', 'comments_count')
+    count_for_id = dict(ids_and_comments)
+
+    for post in most_popular_posts:
+        post.comments_count = count_for_id[post.id]
 
     most_fresh_posts = (
         Post.objects
-        .annotate(fresh_posts=Count('published_at'))
+        .annotate(
+            fresh_posts=Count('published_at'),
+            comments_count=Count('comments'),
+        )
         .order_by('-published_at')[:5]
         .prefetch_related('author')
     )
@@ -47,9 +77,9 @@ def index(request):
 
     context = {
         'most_popular_posts': [
-            serialize_post(post) for post in most_popular_posts
+            serialize_post_optimized(post) for post in most_popular_posts
         ],
-        'page_posts': [serialize_post(post) for post in most_fresh_posts],
+        'page_posts': [serialize_post_optimized(post) for post in most_fresh_posts],
         'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
     }
     return render(request, 'index.html', context)
